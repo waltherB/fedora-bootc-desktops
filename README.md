@@ -1,7 +1,7 @@
 # waba bootc desktops
 
-Two custom Fedora KDE Atomic (bootc) desktop images, built by GitHub Actions and
-published to quay.io/waba:
+Two custom Fedora KDE Atomic (bootc) desktop images, built by GitHub Actions for
+**amd64 and arm64** and published to quay.io/waba as multi-arch images:
 
 | Image                               | Purpose                   |
 | ----------------------------------- | ------------------------- |
@@ -56,18 +56,31 @@ Requirements:
 - ~20 GB free disk per artifact type
 - an output directory on a **local** filesystem (ext4/xfs/btrfs). NFS, FUSE and
   shared VM folders (virtiofs/9p) usually fail with `permission denied`
-- a host whose architecture matches the image (see below)
+- a host whose architecture matches the image you build (amd64 or arm64, see below)
 
 ### Architecture
 
-CI runs on `ubuntu-latest`, so the published images are **amd64 only**. The script
-detects your host architecture and refuses to build if the image was not published
-for it, instead of producing a disk that cannot boot.
+The images are published as multi-arch manifests (`amd64` and `arm64`), so
+`bootc switch` and `podman pull` pick the right one automatically. The helper script
+builds for your host architecture by default and verifies that the pulled image
+really has that architecture before building:
 
-- On an x86_64 machine everything works out of the box.
-- On arm64, either build the media on an x86_64 machine, or add an arm64 job
-  (`runs-on: ubuntu-24.04-arm`) to the workflow, push per-arch tags and publish a
-  manifest list for `:<version>` and `:latest`.
+```bash
+./scripts/build-media.sh dev iso                 # host architecture
+./scripts/build-media.sh dev iso --arch arm64    # explicit
+```
+
+bootc-image-builder builds natively, so build amd64 media on an x86_64 host and
+arm64 media on an arm64 host. Output files are suffixed with the architecture
+(`…-amd64.iso`, `…-arm64.qcow2`), so both can live side by side.
+
+### Image tags
+
+| Tag                                 | What it is                                              |
+| ----------------------------------- | ------------------------------------------------------- |
+| `<image>:latest`                    | Multi-arch manifest, newest build                       |
+| `<image>:<fedora>` (e.g. `:44`)     | Multi-arch manifest, pinned to a Fedora release         |
+| `<image>:<fedora>-amd64` / `-arm64` | Per-arch builds (internal; use `--tag` only to debug)   |
 
 ### Manual invocation
 
@@ -96,17 +109,25 @@ sudo podman run --rm --privileged \
 
 ## CI pipeline
 
-`.github/workflows` builds both images in a matrix and runs these steps:
+`.github/workflows/build-push.yml` has two jobs.
+
+**1. `build`** — a matrix of 2 images × 2 architectures, each on a native runner
+(`ubuntu-latest` for amd64, `ubuntu-24.04-arm` for arm64, no emulation):
 
 1. Read `FEDORA_MAJOR_VERSION` from the Containerfile.
-2. Build the image with `podman build`.
-3. **Rechunk** (optional optimisation): re-lays the image into smaller, stable
+2. Log in to Quay (as root, since all podman commands run under `sudo`).
+3. Build the image with `podman build`.
+4. **Rechunk** (optional optimisation): re-lays the image into smaller, stable
    layers so `bootc upgrade` downloads less. `bootc-base-imagectl` is **not**
    included in Kinoite-based images, so it is run from the official
    `quay.io/fedora/fedora-bootc:<version>` image, with the built image passed as the
    input. If this step is a problem, it can be removed without affecting
    correctness.
-4. Push `:<version>` and `:latest` to Quay.
+5. Push the per-arch tag, e.g. `dev-desktop:44-arm64`.
+
+**2. `manifest`** — runs only when **all four** builds succeeded. It combines the
+amd64 and arm64 images into one manifest list and pushes `:<fedora>` and `:latest`.
+If any build fails, `:latest` keeps pointing at the previous complete set.
 
 Triggers: push to `main` (except README-only changes), weekly on Mondays at
 04:30 UTC, and manual `workflow_dispatch`.
@@ -125,10 +146,11 @@ Triggers: push to `main` (except README-only changes), weekly on Mondays at
 | ------- | ----------- |
 | CI: `crun: executable file /usr/libexec/bootc-base-imagectl not found` (exit 127) | The rechunk step ran inside a Kinoite-based image. Run it from `quay.io/fedora/fedora-bootc:<version>` instead, or remove the step. |
 | `build-media.sh`: `cannot ensure ownership: open ./.writecheck…: permission denied` | SELinux label or an unsuitable filesystem on the output dir. Use the current script (mounts with `:z`), and `--out` on a local ext4/xfs/btrfs path. |
-| `image platform (linux/amd64) does not match the expected platform (linux/arm64)` | You are on arm64 but the image is amd64-only. Build on an x86_64 host or publish an arm64 image (see Architecture). |
+| `image platform (linux/amd64) does not match the expected platform (linux/arm64)` | You pulled an amd64-only image on arm64 (typical for builds from before multi-arch). Wait for a green multi-arch CI run, or pass `--arch amd64` on an x86_64 host. |
+| `build-media.sh`: `not published for arm64` | The tag has no arm64 entry yet. Check that the `manifest` job succeeded in the Actions tab. |
+| CI: arm64 job fails on a package install | A package in the Containerfile is missing for aarch64. Check the dnf error and make it conditional or remove it. |
 | Default login does not work | The images ship a demo user (`demo`, uid 1000, in `wheel`). Change or remove it in the Containerfiles for anything beyond local/demo use. |
 
 ## License
 
 MIT
-
