@@ -51,18 +51,22 @@ jobs:
             --build-arg FEDORA_MAJOR_VERSION=${{ steps.fedora.outputs.version }} \
             --build-arg IMAGE_NAME=${{ matrix.image }} \
             -f ${{ matrix.containerfile }} \
-            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
-            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:latest .
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} .
 
-      - name: Rechunk (flatten to a single bootc-compatible layer)
+      - name: Rechunk (flatten into bootc chunked layers)
         run: |
           sudo podman run --rm --privileged \
+            --security-opt label=type:unconfined_t \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
             ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
-            bootc-base-imagectl rechunk \
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }}
+            /usr/libexec/bootc-base-imagectl rechunk2 \
+              --build --rerun-timestamps \
+              --from ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
+              --to ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }}
 
       - name: Push tags
         run: |
           sudo podman push ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }}
+          sudo podman tag  ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
+                            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:latest
           sudo podman push ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:latest
