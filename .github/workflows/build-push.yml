@@ -55,15 +55,16 @@ jobs:
 
       - name: Rechunk (flatten into bootc chunked layers)
         run: |
+          IMG=${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}
+          VER=${{ steps.fedora.outputs.version }}
           sudo podman run --rm --privileged \
             --security-opt label=type:unconfined_t \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
-            /usr/libexec/bootc-base-imagectl rechunk2 \
-              --build --rerun-timestamps \
-              --from ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
-              --to ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }}
-
+            quay.io/fedora/fedora-bootc:${VER} \
+            /usr/libexec/bootc-base-imagectl rechunk \
+              ${IMG}:${VER} \
+              ${IMG}:${VER}-chunked
+          sudo podman tag ${IMG}:${VER}-chunked ${IMG}:${VER}
       - name: Push tags
         run: |
           sudo podman push ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }}
