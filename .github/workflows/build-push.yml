@@ -1,0 +1,68 @@
+name: Build and push bootc desktops
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["README.md"]
+  schedule:
+    - cron: "30 4 * * 1"   # weekly, Monday 04:30 UTC — picks up new base images
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: quay.io
+  REGISTRY_ORG: waba
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: dev-desktop
+            containerfile: Containerfile.dev
+          - image: admin-desktop
+            containerfile: Containerfile.admin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect Fedora version from Containerfile
+        id: fedora
+        run: |
+          ver=$(grep -m1 '^ARG FEDORA_MAJOR_VERSION=' ${{ matrix.containerfile }} | cut -d= -f2)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Quay.io
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Build image
+        run: |
+          sudo podman build \
+            --build-arg FEDORA_MAJOR_VERSION=${{ steps.fedora.outputs.version }} \
+            --build-arg IMAGE_NAME=${{ matrix.image }} \
+            -f ${{ matrix.containerfile }} \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:latest .
+
+      - name: Rechunk (flatten to a single bootc-compatible layer)
+        run: |
+          sudo podman run --rm --privileged \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
+            bootc-base-imagectl rechunk \
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }}
+
+      - name: Push tags
+        run: |
+          sudo podman push ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }}
+          sudo podman push ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:latest

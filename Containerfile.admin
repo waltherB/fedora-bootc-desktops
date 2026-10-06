@@ -1,0 +1,38 @@
+# Admin desktop — KDE Atomic (Kinoite) base
+ARG FEDORA_MAJOR_VERSION=44
+FROM quay.io/fedora/fedora-kinoite:${FEDORA_MAJOR_VERSION}
+
+ARG IMAGE_NAME=admin-desktop
+ARG FEDORA_MAJOR_VERSION
+
+ENV NAME="waba-${IMAGE_NAME}" \
+    VERSION="${FEDORA_MAJOR_VERSION}" \
+    IMAGE_NAME="${IMAGE_NAME}"
+LABEL com.github.waltherb.bootc-desktop="${IMAGE_NAME}" \
+      org.opencontainers.image.title="waba ${IMAGE_NAME} (Fedora ${FEDORA_MAJOR_VERSION})" \
+      org.opencontainers.image.description="Custom Fedora KDE Atomic desktop — sysadmin edition" \
+      org.opencontainers.image.source="https://github.com/waltherB/fedora-bootc-desktops" \
+      org.opencontainers.image.licenses="MIT"
+
+# --- Systems / admin tooling ---
+RUN dnf -y install \
+      cockpit cockpit-machines cockpit-podman \
+      ansible ansible-collection-community-general \
+      openssh-clients sshuttle \
+      tcpdump nmap nmap-ncat \
+      wireshark-cli \
+      mtr traceroute bind-utils \
+      lsof strace perf \
+      policycoreutils-python-utils setools-console \
+      dnf-utils \
+      htop iotop iftop btop \
+      tmux jq wget curl git \
+    && dnf clean all
+
+# --- Enable Cockpit web UI (https://localhost:9090) by default ---
+RUN systemctl enable cockpit.socket
+
+# --- Bash customization for every new user ---
+COPY --chmod=0644 files/etc/skel/.bashrc.d/10-waba.sh /etc/skel/.bashrc.d/10-waba.sh
+
+RUN bootc container lint

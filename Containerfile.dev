@@ -1,0 +1,44 @@
+# Developer desktop — KDE Atomic (Kinoite) base
+ARG FEDORA_MAJOR_VERSION=44
+FROM quay.io/fedora/fedora-kinoite:${FEDORA_MAJOR_VERSION}
+
+ARG IMAGE_NAME=dev-desktop
+ARG FEDORA_MAJOR_VERSION
+
+# --- Labels: bootc switch shows these in `bootc status` ---
+ENV NAME="waba-${IMAGE_NAME}" \
+    VERSION="${FEDORA_MAJOR_VERSION}" \
+    IMAGE_NAME="${IMAGE_NAME}"
+LABEL com.github.waltherb.bootc-desktop="${IMAGE_NAME}" \
+      org.opencontainers.image.title="waba ${IMAGE_NAME} (Fedora ${FEDORA_MAJOR_VERSION})" \
+      org.opencontainers.image.description="Custom Fedora KDE Atomic desktop — developer edition" \
+      org.opencontainers.image.source="https://github.com/waltherB/fedora-bootc-desktops" \
+      org.opencontainers.image.licenses="MIT"
+
+# --- Core dev toolchain ---
+RUN dnf -y install \
+      git git-lfs \
+      make automake gcc gcc-c++ kernel-devel \
+      python3 python3-pip python3-devel \
+      nodejs npm \
+      golang rust cargo \
+      java-21-openjdk-devel maven \
+      podman podman-compose toolbox \
+      htop tmux wget curl jq \
+    && dnf clean all
+
+# --- Editors / IDEs available as RPMs.
+#     Day-2 rule of thumb: anything not here (VS Code, JetBrains, etc.)
+#     goes in Flatpak, NOT in the image. Keep the image lean. ---
+RUN dnf -y install \
+      neovim helix \
+      gh \
+    && dnf clean all
+
+# --- Bash customization for every new user ---
+COPY --chmod=0644 files/etc/skel/.bashrc.d/10-waba.sh /etc/skel/.bashrc.d/10-waba.sh
+
+# --- bootc hygiene (same rules as sigulete/kde-bootc) ---
+# /usr is the image; /var (and therefore /etc changes, homes) survives across images,
+# which is what makes switching between dev/admin painless.
+RUN bootc container lint
