@@ -32,6 +32,12 @@ RUN dnf -y install \
 # --- Enable Cockpit web UI (https://localhost:9090) by default ---
 RUN systemctl enable cockpit.socket
 
+# --- Default demo user (uid/gid 1000, admin via wheel) ---
+# Password is set at build time via chpasswd; change or remove this
+# block for anything beyond local/demo use.
+RUN useradd --uid 1000 --create-home --user-group --groups wheel demo \
+    && echo 'demo:redhat' | chpasswd
+
 # --- Bash customization for every new user ---
 COPY --chmod=0644 files/etc/skel/.bashrc.d/10-waba.sh /etc/skel/.bashrc.d/10-waba.sh
 
