@@ -1,0 +1,18 @@
+# bootc-image-builder output (qcow2 / ISO artifacts from scripts/build-media.sh)
+/output/
+/.stash-*/
+
+# Disk images and installers, wherever they end up
+*.qcow2
+*.iso
+*.raw
+*.vmdk
+
+# Local bootc-image-builder customizations (may contain passwords / SSH keys)
+/config.toml
+/config.json
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store
