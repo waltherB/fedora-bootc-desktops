@@ -51,7 +51,13 @@ RUN mkdir -p /usr/lib/bootc/install && \
     printf '[install.filesystem.root]\ntype = "xfs"\n' \
       > /usr/lib/bootc/install/00-waba.toml
 
-# --- bootc hygiene (same rules as sigulete/kde-bootc) ---
+# --- DNS: Cloudflare + Google via systemd-resolved ---
+RUN mkdir -p /usr/lib/systemd/resolved.conf.d && \
+    printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\n' \
+      > /usr/lib/systemd/resolved.conf.d/10-waba-dns.conf && \
+    systemctl enable systemd-resolved
+
+# --- bootc hygiene ---
 # /usr is the image; /var (and therefore /etc changes, homes) survives across images,
 # which is what makes switching between dev/admin painless.
 RUN bootc container lint
