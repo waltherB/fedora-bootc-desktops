@@ -24,13 +24,16 @@ RUN dnf -y install \
       mtr traceroute bind-utils \
       lsof strace perf \
       policycoreutils-python-utils setools-console \
-      dnf-utils \
+      dnf-utils qemu-guest-agent \
       htop iotop iftop btop \
       tmux jq wget curl git \
     && dnf clean all
 
 # --- Enable Cockpit web UI (https://localhost:9090) by default ---
 RUN systemctl enable cockpit.socket
+
+# --- Enable qemu-guest-agent
+RUN systemctl enable qemu-guest-agent
 
 # --- Default demo user (uid/gid 1000, admin via wheel) ---
 # Password is set at build time via chpasswd; change or remove this
