@@ -31,19 +31,32 @@ entry in the GRUB/systemd-boot menu) reboots into the previous image.
 
 ## First install (bare metal or VM)
 
-Build an ISO from one of the images with bootc-image-builder:
+Build qcow2 disk images (for VMs) and ISO installers (for bare metal) with
+bootc-image-builder. The helper script pulls the images for you:
 
 ```bash
-sudo podman pull quay.io/waba/dev-desktop:latest
+./scripts/build-media.sh            # qcow2 + ISO for dev-desktop and admin-desktop
+./scripts/build-media.sh dev        # only dev-desktop
+./scripts/build-media.sh admin iso  # only admin-desktop, only the ISO
+```
+
+Artifacts land in `output/<image>/<image>.qcow2` and `output/<image>/<image>.iso`.
+The qcow2 is handy for smoke-testing in GNOME Boxes / virt-manager before you
+install the ISO on real hardware.
+
+Requirements: `podman`, passwordless sudo (or run as root), and ~20 GB free disk
+per artifact type.
+
+Equivalent manual invocation, if you prefer:
+
+```bash
 sudo podman run --rm -it --privileged \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   -v "$PWD/output:/output" \
   quay.io/centos-bootc/bootc-image-builder:latest \
+  --type iso \
   quay.io/waba/dev-desktop:latest
 ```
-
-The ISO appears in `./output/`. Boot it, install, done — the machine is now
-tracking `dev-desktop` and you can `bootc switch` from there.
 
 ## Setup
 
