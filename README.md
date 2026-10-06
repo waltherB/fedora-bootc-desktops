@@ -43,6 +43,7 @@ script pulls the images for you:
 ./scripts/build-media.sh --out /var/tmp/bootc-out # custom (local) output directory
 ./scripts/build-media.sh --tag 44                 # use :44 instead of :latest
 ./scripts/build-media.sh --config ./config.toml   # pass a bootc-image-builder customizations file
+./scripts/build-media.sh --rootfs ext4            # root filesystem (default: xfs)
 ```
 
 Artifacts land in `output/<image>/<image>-<arch>.qcow2` and
@@ -52,10 +53,11 @@ GNOME Boxes / virt-manager before you install the ISO on real hardware.
 
 Requirements:
 
-- `podman` and passwordless `sudo` (or run as root)
+- `podman` and passwordless `sudo` (or run as root). **On macOS** see
+  [Building on macOS](#building-on-macos): no `sudo`, and a rootful podman machine
 - ~20 GB free disk per artifact type
-- an output directory on a **local** filesystem (ext4/xfs/btrfs). NFS, FUSE and
-  shared VM folders (virtiofs/9p) usually fail with `permission denied`
+- on Linux, an output directory on a **local** filesystem (ext4/xfs/btrfs). NFS,
+  FUSE and shared VM folders (virtiofs/9p) usually fail with `permission denied`
 - a host whose architecture matches the image you build (amd64 or arm64, see below)
 
 ### Architecture
@@ -82,7 +84,27 @@ arm64 media on an arm64 host. Output files are suffixed with the architecture
 | `<image>:<fedora>` (e.g. `:44`)     | Multi-arch manifest, pinned to a Fedora release         |
 | `<image>:<fedora>-amd64` / `-arm64` | Per-arch builds (internal; use `--tag` only to debug)   |
 
-### Manual invocation
+### Building on macOS
+
+On macOS, podman runs inside a Linux VM, and bind-mounting a macOS folder into the
+build container fails with `cannot ensure ownership … permission denied`. The script
+handles this by building into a volume inside the VM and copying the result out.
+You only need to prepare the podman machine once (bootc-image-builder requires a
+**rootful** machine) and run the script **without `sudo`**:
+
+```bash
+podman machine stop
+podman machine set --rootful --disk-size 100
+podman machine start
+
+./scripts/build-media.sh admin qcow2 --arch arm64     # no sudo
+```
+
+On Apple Silicon the VM is arm64, so arm64 media builds natively. Building amd64
+media there would need emulation and is not supported by the script; use an x86_64
+Linux host for that. The resulting qcow2 can be opened in UTM.
+
+### Manual invocation (Linux)
 
 Equivalent manual command, if you prefer (note the `:z` on the output volume, which
 avoids SELinux denials):
@@ -145,7 +167,10 @@ Triggers: push to `main` (except README-only changes), weekly on Mondays at
 | Symptom | Cause / fix |
 | ------- | ----------- |
 | CI: `crun: executable file /usr/libexec/bootc-base-imagectl not found` (exit 127) | The rechunk step ran inside a Kinoite-based image. Run it from `quay.io/fedora/fedora-bootc:<version>` instead, or remove the step. |
-| `build-media.sh`: `cannot ensure ownership: open ./.writecheck…: permission denied` | SELinux label or an unsuitable filesystem on the output dir. Use the current script (mounts with `:z`), and `--out` on a local ext4/xfs/btrfs path. |
+| `build-media.sh`: `cannot ensure ownership: open ./.writecheck…: permission denied` | **Linux:** SELinux label or an unsuitable filesystem on the output dir; use the current script (mounts with `:z`) and `--out` on a local ext4/xfs/btrfs path. **macOS:** the shared folder cannot be written by root in the VM; use the current script without `sudo` and with a rootful podman machine (see Building on macOS). |
+| `error: cannot build manifest: failed to initialize bootc distro: missing required info: DefaultRootFs` | The image does not declare a default root filesystem (Kinoite-based images do not). The script passes `--rootfs xfs` by default; the Containerfiles also ship `/usr/lib/bootc/install/00-waba.toml` so `bootc install` works without flags. |
+| `build-media.sh` on macOS: `podman machine is not rootful` | Run `podman machine stop && podman machine set --rootful --disk-size 100 && podman machine start`. |
+| `WARNING: cannot check architecture support for aarch64: no canary binary found` | Harmless warning from bootc-image-builder when the host has no emulator for that architecture; ignore it when building natively. |
 | `image platform (linux/amd64) does not match the expected platform (linux/arm64)` | You pulled an amd64-only image on arm64 (typical for builds from before multi-arch). Wait for a green multi-arch CI run, or pass `--arch amd64` on an x86_64 host. |
 | `build-media.sh`: `not published for arm64` | The tag has no arm64 entry yet. Check that the `manifest` job succeeded in the Actions tab. |
 | CI: arm64 job fails on a package install | A package in the Containerfile is missing for aarch64. Check the dnf error and make it conditional or remove it. |

@@ -10,9 +10,16 @@
 #   ./scripts/build-media.sh --out /var/tmp/bib       # custom output dir
 #   ./scripts/build-media.sh --tag 44                 # use :44 instead of :latest
 #   ./scripts/build-media.sh --config ./config.toml   # pass a bib customizations file
+#   ./scripts/build-media.sh --rootfs ext4            # root filesystem (default: xfs)
 #
 # Requirements: podman, passwordless sudo (or run as root), ~20 GB free disk
 # per artifact type, output dir on a LOCAL filesystem (ext4/xfs/btrfs).
+#
+# macOS: podman runs in a Linux VM, so the script (a) must NOT be run with sudo,
+#   (b) needs a ROOTFUL podman machine, and (c) builds into a volume inside the VM
+#   and copies the result out (bind-mounting a macOS folder fails with
+#   "cannot ensure ownership ... permission denied").
+#     podman machine stop; podman machine set --rootful --disk-size 100; podman machine start
 #
 # Notes:
 #   * The image architecture MUST match the architecture you build for.
@@ -28,6 +35,10 @@ BIB_IMAGE="quay.io/centos-bootc/bootc-image-builder:latest"
 OUTBASE="$(pwd)/output"
 TAG="latest"
 CONFIG=""
+# Kinoite-based images do not declare a default root filesystem, and
+# bootc-image-builder fails with "missing required info: DefaultRootFs".
+# Passing it explicitly works with any image version.
+ROOTFS="xfs"
 
 # Default arch = host arch, mapped to podman naming
 case "$(uname -m)" in
@@ -48,6 +59,7 @@ while [ $# -gt 0 ]; do
     --out)     OUTBASE="$(realpath -m "${2:?--out needs a path}")"; shift ;;
     --tag)     TAG="${2:?--tag needs a value}"; shift ;;
     --config)  CONFIG="$(realpath "${2:?--config needs a file}")"; shift ;;
+    --rootfs)  ROOTFS="${2:?--rootfs needs xfs|ext4|btrfs}"; shift ;;
     -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     *) echo "Unknown arg: $1 (use: dev | admin | qcow2 | iso | --arch | --out | --tag | --config)"; exit 1 ;;
   esac
@@ -64,17 +76,40 @@ IMAGES=(dev-desktop admin-desktop)
 [ -n "$IMAGE_FILTER" ] && IMAGES=("$IMAGE_FILTER")
 [ "${#TYPES[@]}" -eq 0 ] && TYPES=(qcow2 iso)
 
-if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; else SUDO=""; fi
+MACOS=0
+[ "$(uname -s)" = "Darwin" ] && MACOS=1
+
+if [ "$MACOS" -eq 1 ]; then
+  SUDO=""
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "!! On macOS, run this script WITHOUT sudo (podman talks to your user's podman machine)."
+    exit 1
+  fi
+  ROOTFUL="$(podman machine inspect --format '{{.Rootful}}' 2>/dev/null | head -n1 || true)"
+  if [ "$ROOTFUL" != "true" ]; then
+    echo "!! The podman machine is not rootful (bootc-image-builder needs that). Run:"
+    echo "     podman machine stop"
+    echo "     podman machine set --rootful --disk-size 100"
+    echo "     podman machine start"
+    exit 1
+  fi
+elif [ "$(id -u)" -ne 0 ]; then
+  SUDO="sudo"
+else
+  SUDO=""
+fi
 
 # Warn if output dir is on a filesystem root-in-container often cannot write to
 mkdir -p "$OUTBASE"
-FSTYPE="$(df -T "$OUTBASE" | awk 'NR==2{print $2}')"
-case "$FSTYPE" in
-  nfs*|cifs|fuse*|virtiofs|9p|vboxsf)
-    echo "!! $OUTBASE is on '$FSTYPE'; bootc-image-builder usually cannot write there."
-    echo "   Use --out with a local path, e.g. --out /var/tmp/bootc-output"
-    exit 1 ;;
-esac
+if [ "$MACOS" -eq 0 ]; then
+  FSTYPE="$(df -T "$OUTBASE" | awk 'NR==2{print $2}')"
+  case "$FSTYPE" in
+    nfs*|cifs|fuse*|virtiofs|9p|vboxsf)
+      echo "!! $OUTBASE is on '$FSTYPE'; bootc-image-builder usually cannot write there."
+      echo "   Use --out with a local path, e.g. --out /var/tmp/bootc-output"
+      exit 1 ;;
+  esac
+fi
 
 echo "==> Target architecture: ${ARCH}"
 echo "==> Output directory:    ${OUTBASE}"
@@ -106,11 +141,21 @@ for IMAGE in "${IMAGES[@]}"; do
     $SUDO rm -rf "$OUTDIR"
     $SUDO mkdir -p "$OUTDIR"
 
+    # macOS: build into a volume inside the VM instead of a shared folder
+    VOL="bib-out-${IMAGE}-${TYPE}"
+    if [ "$MACOS" -eq 1 ]; then
+      $SUDO podman volume rm -f "$VOL" >/dev/null 2>&1 || true
+      $SUDO podman volume create "$VOL" >/dev/null
+      OUTMOUNT="${VOL}:/output"
+    else
+      OUTMOUNT="${OUTDIR}:/output:z"
+    fi
+
     echo "==> Building ${TYPE} for ${REF}"
-    BIB_ARGS=(--type "$TYPE" --target-arch "$([ "$ARCH" = amd64 ] && echo x86_64 || echo aarch64)")
+    BIB_ARGS=(--type "$TYPE" --rootfs "$ROOTFS" --target-arch "$([ "$ARCH" = amd64 ] && echo x86_64 || echo aarch64)")
     MOUNTS=(
       -v /var/lib/containers/storage:/var/lib/containers/storage
-      -v "${OUTDIR}:/output:z"
+      -v "${OUTMOUNT}"
     )
     if [ -n "$CONFIG" ]; then
       MOUNTS+=(-v "${CONFIG}:/config.toml:ro,z")
@@ -124,6 +169,14 @@ for IMAGE in "${IMAGES[@]}"; do
       "$BIB_IMAGE" \
       "${BIB_ARGS[@]}" \
       "$REF"
+
+    # macOS: copy the result out of the VM volume to the local folder
+    if [ "$MACOS" -eq 1 ]; then
+      CID="$($SUDO podman create --entrypoint /bin/true -v "${VOL}:/output" "$BIB_IMAGE")"
+      $SUDO podman cp "${CID}:/output/." "$OUTDIR/"
+      $SUDO podman rm "$CID" >/dev/null
+      $SUDO podman volume rm -f "$VOL" >/dev/null
+    fi
 
     # bootc-image-builder writes generic names; normalise to <image>.<type>
     case "$TYPE" in

@@ -46,6 +46,11 @@ RUN useradd --uid 1000 --create-home --user-group --groups wheel demo \
 # --- Bash customization for every new user ---
 COPY --chmod=0644 files/etc/skel/.bashrc.d/10-waba.sh /etc/skel/.bashrc.d/10-waba.sh
 
+# --- Default root filesystem for bootc install / bootc-image-builder ---
+RUN mkdir -p /usr/lib/bootc/install && \
+    printf '[install.filesystem.root]\ntype = "xfs"\n' \
+      > /usr/lib/bootc/install/00-waba.toml
+
 # --- bootc hygiene (same rules as sigulete/kde-bootc) ---
 # /usr is the image; /var (and therefore /etc changes, homes) survives across images,
 # which is what makes switching between dev/admin painless.
