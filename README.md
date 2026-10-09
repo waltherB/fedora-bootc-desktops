@@ -162,6 +162,39 @@ Triggers: push to `main` (except README-only changes), weekly on Mondays at
   wait for the green check, then `bootc upgrade` on your machines.
 - New Fedora release: bump `FEDORA_MAJOR_VERSION` in both Containerfiles.
 
+## Pre-installed services
+
+The developer desktop (`dev-desktop`) includes a **code-server** quadlet that is
+started automatically on boot. code-server runs VS Code in the browser and
+auto-updates to the latest version from `ghcr.io/coder/code-server`.
+
+| Service | Port | Access | Auto-update | Persistent Storage |
+| ------- | ---- | ------ | ----------- | ------------------ |
+| code-server | 8080 | `http://localhost:8080` | ✅ Yes | Config, extensions, projects |
+
+Default credentials: username `coder`, password `redhat` (matches the demo user).
+
+To manage the service:
+
+```bash
+# Stop/start/restart
+systemctl stop code-server.container
+systemctl start code-server.container
+systemctl restart code-server.container
+
+# View logs
+journalctl -u code-server.container -f
+
+# Disable auto-start
+systemctl disable code-server.container
+```
+
+Persistent data is stored in:
+- Config: `/var/lib/containers/code-server/data`
+- Extensions: `/var/lib/containers/code-server/extensions`
+- Projects: `/var/lib/containers/code-server/projects`
+- Workspace: `/var/lib/containers/code-server/workspace` (host's `/workspace`)
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
