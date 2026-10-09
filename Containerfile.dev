@@ -49,7 +49,7 @@ COPY files/usr/lib/containers/systemd/code-server.container /usr/lib/containers/
 RUN systemctl enable code-server.container
 
 # --- Enable qemu-guest-agent
-RUN systemctl enable qemu-guest-agent
+#RUN systemctl enable qemu-guest-agent
 
 # --- Default demo user (uid/gid 1000, admin via wheel) ---
 # Password is set at build time via chpasswd; change or remove this
