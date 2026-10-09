@@ -17,7 +17,104 @@ env:
   REGISTRY_ORG: waba
 
 jobs:
-  build-push:
+  # ---------------------------------------------------------------------------
+  # 1. Build one image per (image x architecture) on a NATIVE runner.
+  #    Rechunk, then push per-arch tags:  <image>:<fedora>-amd64 / -arm64
+  # ---------------------------------------------------------------------------
+  build:
+    name: build ${{ matrix.image }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [dev-desktop, admin-desktop]
+        arch: [amd64, arm64]
+        include:
+          - image: dev-desktop
+            containerfile: Containerfile.dev
+          - image: admin-desktop
+            containerfile: Containerfile.admin
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect Fedora version from Containerfile
+        id: fedora
+        run: |
+          ver=$(grep -m1 '^ARG FEDORA_MAJOR_VERSION=' ${{ matrix.containerfile }} | cut -d= -f2)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      # Log in as root: every podman command below runs under sudo, and root has
+      # its own auth file (a user-level login would not be used by sudo podman).
+      - name: Log in to Quay.io
+        env:
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
+        run: |
+          echo "$QUAY_TOKEN" | sudo podman login "$REGISTRY" \
+            --username "$QUAY_USERNAME" --password-stdin
+
+      - name: Build image
+        run: |
+          IMG=${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}
+          VER=${{ steps.fedora.outputs.version }}
+          sudo podman build \
+            --build-arg FEDORA_MAJOR_VERSION=${VER} \
+            --build-arg IMAGE_NAME=${{ matrix.image }} \
+            -f ${{ matrix.containerfile }} \
+            -t ${IMG}:${VER}-${{ matrix.arch }} .
+
+      # Rechunk: bootc-base-imagectl is NOT shipped in kinoite-derived images
+      # (that is by design, not a bug). The documented pattern is to run it
+      # from a stock bootc base image (here: quay.io/fedora/fedora-bootc) with
+      # the host's FULL /var/lib/containers mapped in — not just .../storage,
+      # and not from inside the target image itself.
+      # The subcommand was renamed rechunk -> rechunk2 in newer releases, so
+      # probe which one this tag supports first.
+      - name: Rechunk (flatten into bootc chunked layers)
+        run: |
+          IMG=${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}
+          VER=${{ steps.fedora.outputs.version }}
+          ARCH=${{ matrix.arch }}
+          HELPER=quay.io/fedora/fedora-bootc:${VER}
+
+          if sudo podman run --rm --entrypoint /bin/sh "${HELPER}" -c \
+               '/usr/libexec/bootc-base-imagectl rechunk2 --help >/dev/null 2>&1'; then
+            SUB=rechunk2
+          else
+            SUB=rechunk
+          fi
+          echo "Using bootc-base-imagectl subcommand: ${SUB}"
+
+          sudo podman run --rm --privileged \
+            --security-opt label=type:unconfined_t \
+            -v /var/lib/containers:/var/lib/containers \
+            "${HELPER}" \
+            /usr/libexec/bootc-base-imagectl "${SUB}" \
+              ${IMG}:${VER}-${ARCH} \
+              ${IMG}:${VER}-${ARCH}-chunked
+
+          sudo podman tag ${IMG}:${VER}-${ARCH}-chunked ${IMG}:${VER}-${ARCH}
+
+      - name: Push per-arch tag
+        run: |
+          IMG=${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}
+          VER=${{ steps.fedora.outputs.version }}
+          sudo podman push ${IMG}:${VER}-${{ matrix.arch }}
+
+  # ---------------------------------------------------------------------------
+  # 2. Stitch the per-arch images into one multi-arch manifest list and publish
+  #    <image>:<fedora> and <image>:latest. Runs only if BOTH arches succeeded
+  #    for every image, so :latest never points at a half-built set.
+  # ---------------------------------------------------------------------------
+  manifest:
+    name: manifest ${{ matrix.image }}
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -39,29 +136,27 @@ jobs:
           echo "version=$ver" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Quay.io
-        uses: redhat-actions/podman-login@v1
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.QUAY_USERNAME }}
-          password: ${{ secrets.QUAY_TOKEN }}
-
-      - name: Build image
+        env:
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
         run: |
-          sudo podman build \
-            --build-arg FEDORA_MAJOR_VERSION=${{ steps.fedora.outputs.version }} \
-            --build-arg IMAGE_NAME=${{ matrix.image }} \
-            -f ${{ matrix.containerfile }} \
-            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} .
+          echo "$QUAY_TOKEN" | sudo podman login "$REGISTRY" \
+            --username "$QUAY_USERNAME" --password-stdin
 
-      - name: Push tags
+      - name: Create and push multi-arch manifests
         run: |
-          sudo podman push ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }}
-          sudo podman tag  ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
-                            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:latest
-          sudo podman push ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:latest
+          IMG=${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}
+          VER=${{ steps.fedora.outputs.version }}
 
-      - name: Verify image is bootable (bootc lint already ran at build; sanity-pull check)
+          for TAG in "${VER}" latest; do
+            sudo podman manifest create "${IMG}:${TAG}"
+            sudo podman manifest add "${IMG}:${TAG}" "docker://${IMG}:${VER}-amd64"
+            sudo podman manifest add "${IMG}:${TAG}" "docker://${IMG}:${VER}-arm64"
+            sudo podman manifest push --all "${IMG}:${TAG}" "docker://${IMG}:${TAG}"
+          done
+
+      - name: Show result
         run: |
-          sudo podman image inspect \
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}:${{ steps.fedora.outputs.version }} \
-            --format 'Pushed: {{ .RepoTags }} ({{ .Size }} bytes)'
+          IMG=${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image }}
+          sudo podman manifest inspect "docker://${IMG}:latest" \
+            | grep -E '"architecture"|"os"' || true
