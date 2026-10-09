@@ -29,13 +29,6 @@ RUN dnf -y install \
       tmux jq wget curl git \
     && dnf clean all
 
-# --- Add flatpak's ---
-RUN flatpak remote-delete --force flathub || true && \
-    flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && \
-    flatpak install --system -y flathub \
-        org.remmina.Remmina \
-        org.wireshark.Wireshark
-
 # --- Enable Cockpit web UI (https://localhost:9090) by default ---
 RUN systemctl enable cockpit.socket
 
