@@ -1,0 +1,35 @@
+# code-server quadlet for developer desktop
+# Auto-updates enabled via ImageAutoUpdate=registry
+# Access at http://localhost:8080 after starting
+
+[Unit]
+Description=Code Server (VS Code in the browser)
+Documentation=https://github.com/coder/code-server
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/coder/code-server:latest
+ImageAutoUpdate=registry
+ContainerName=code-server
+
+# Run as the current user to maintain user-specific config
+User=
+
+# Persist extensions and config
+Volume=/var/lib/containers/code-server/data:/home/coder/.config
+Volume=/var/lib/containers/code-server/extensions:/home/coder/.vscode-server/extensions
+Volume=/var/lib/containers/code-server/projects:/home/coder/projects:Z
+
+# Environment variables
+Environment=PASSWORD=redhat
+Environment=SUDO_PASSWORD=redhat
+
+# Expose the web UI port
+PublishPort=8080:8080
+
+# Allow access to host directories
+Volume=/var/lib/containers/code-server/workspace:/workspace:Z
+
+[Install]
+WantedBy=multi-user.target

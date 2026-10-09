@@ -47,6 +47,12 @@ RUN flatpak remote-delete --force flathub || true && \
 COPY files/atea-danmark-fedora-kinoite-administrator-wallpaper-3840×2160.svg /usr/share/backgrounds/atea-danmark-fedora-kinoite-administrator-wallpaper-3840×2160.svg
 COPY files/atea-danmark-fedora-kinoite-developer-wallpaper-3840×2160.svg /usr/share/backgrounds/atea-danmark-fedora-kinoite-developer-wallpaper-3840×2160.svg
 
+# Add code-server quadlet with auto-update
+RUN mkdir -p /usr/lib/containers/systemd
+COPY files/usr/lib/containers/systemd/code-server.container /usr/lib/containers/systemd/code-server.container
+
+# Enable the code-server quadlet to start on boot
+RUN systemctl enable code-server.container
 
 # --- Enable qemu-guest-agent
 RUN systemctl enable qemu-guest-agent
