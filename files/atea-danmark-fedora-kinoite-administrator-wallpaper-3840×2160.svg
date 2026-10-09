@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3840" height="2160" viewBox="0 0 3840 2160">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#081222"/>
+      <stop offset="0.5" stop-color="#0e2036"/>
+      <stop offset="1" stop-color="#0a1626"/>
+    </linearGradient>
+    <linearGradient id="fedora2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#51a2da"/>
+      <stop offset="1" stop-color="#294172"/>
+    </linearGradient>
+    <linearGradient id="glow2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0096d6" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#0096d6" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#51a2da" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="blur2" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="120"/>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="3840" height="2160" fill="url(#bg2)"/>
+
+  <!-- ambient glows -->
+  <ellipse cx="3400" cy="1800" rx="950" ry="620" fill="#51a2da" opacity="0.10" filter="url(#blur2)"/>
+  <ellipse cx="400" cy="300" rx="900" ry="600" fill="#0096d6" opacity="0.08" filter="url(#blur2)"/>
+
+  <!-- infrastructure / topology motif -->
+  <g stroke="#51a2da" stroke-opacity="0.22" stroke-width="4">
+    <path d="M620 540 L1220 540 L1520 860 L2120 860 L2420 540 L3020 540"/>
+    <path d="M620 540 L920 860 M2420 540 L2720 860 M1520 860 L920 860 M2120 860 L2720 860"/>
+    <path d="M920 860 L920 1180 M2720 860 L2720 1180 M1820 1180 L920 1180 M1820 1180 L2720 1180"/>
+  </g>
+  <g fill="#0e2036" stroke="#51a2da" stroke-width="5">
+    <circle cx="620" cy="540" r="34"/>
+    <circle cx="1220" cy="540" r="34"/>
+    <circle cx="2420" cy="540" r="34"/>
+    <circle cx="3020" cy="540" r="34"/>
+    <circle cx="920" cy="860" r="34"/>
+    <circle cx="1520" cy="860" r="34"/>
+    <circle cx="2120" cy="860" r="34"/>
+    <circle cx="2720" cy="860" r="34"/>
+    <circle cx="920" cy="1180" r="34"/>
+    <circle cx="1820" cy="1180" r="46" fill="#123052"/>
+    <circle cx="2720" cy="1180" r="34"/>
+  </g>
+  <g fill="#8fd0f0" opacity="0.85" font-family="monospace" font-size="40">
+    <text x="720" y="500">srv-01</text>
+    <text x="2480" y="500">srv-02</text>
+    <text x="760" y="960">db</text>
+    <text x="1560" y="960">lb</text>
+    <text x="2150" y="960">fw</text>
+    <text x="2760" y="960">idm</text>
+    <text x="1060" y="1290">podman</text>
+    <text x="1700" y="1290">core</text>
+    <text x="2800" y="1290">idm-2</text>
+  </g>
+
+  <!-- admin status line, top-left -->
+  <g font-family="monospace" font-size="44" opacity="0.75">
+    <text x="260" y="330" fill="#7fb3e8">● SYSTEMS NOMINAL</text>
+    <text x="260" y="410" fill="#5c7aa6">fedora 44 · kinomite · kde plasma 6</text>
+    <text x="260" y="490" fill="#5c7aa6">ostree admin · cockpit · freeipa</text>
+  </g>
+
+  <!-- top accent line -->
+  <rect x="0" y="0" width="3840" height="6" fill="url(#glow2)"/>
+
+  <!-- footer label -->
+  <text x="2980" y="2060" fill="#5c7aa6" font-size="42" opacity="0.7" font-family="monospace">FEDORA 44 KINOTE · ADMINISTRATOR</text>
+
+  <!-- Atea logo, bottom-right -->
+  <g transform="translate(2570,1880)">
+    <text x="0" y="130" font-family="Arial, Helvetica, sans-serif" font-size="190" font-weight="bold" letter-spacing="4" fill="#0096d6">atea</text>
+    <text x="418" y="130" font-family="Arial, Helvetica, sans-serif" font-size="64" fill="#8fd0f0" opacity="0.9"> danmark</text>
+    <rect x="0" y="170" width="620" height="6" rx="3" fill="url(#glow2)"/>
+  </g>
+</svg>
