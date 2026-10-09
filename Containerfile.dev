@@ -42,7 +42,7 @@ RUN flatpak remote-delete --force flathub || true && \
     flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && \
     flatpak install --system -y flathub \
         com.visualstudio.code \
-        org.jetbrains.intellij.IDEA-Community \
+        com.jetbrains.intellij.IDEA-Community \
         io.podman_desktop.PodmanDesktop
 
 # Add Atea wallpapers
